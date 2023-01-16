@@ -1,0 +1,106 @@
+---
+title: "UNC Sail app"
+author: "Emmerson Jordan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r}
+#Upload packages and data
+library(readr)
+library(car)
+
+basketball = read.csv("cbb21.csv")
+#head(basketball)
+```
+
+```{r}
+#I want to determine which variables best predict team's winning percentage (WPG = wins per game)
+#create new variable for wins per game 
+basketball$WPG = (basketball$W)/(basketball$G)
+
+#Create new dataset with WPG and all numeric variables (minus seed, W, and G)
+CBB21 = subset(basketball, select = -c(1, 2, 3, 4, 22))
+#head(CBB21)
+```
+
+```{r}
+#use step wise regression to choose predictors
+Full = lm(WPG~., data=CBB21)
+none = lm(WPG~1, data=CBB21)
+MSE = (summary(Full)$sigma)^2
+step(none, scope=list(upper=Full), scale=MSE, trace=FALSE)
+```
+
+```{r}
+#best model: 
+bestmod = lm(formula = WPG ~ WAB + EFG_O + EFG_D + TORD + ADJDE + DRB + TOR + ORB + FTRD + ADJOE + FTR, data = CBB21)
+
+#plot model for residual analysis 
+plot(bestmod, 1:2)
+
+#Is a linear model the best model to use? Check for conditions of linearity
+#Linearity (residuals vs. fitted plot)- Red line shows slight curvature on right tail end, is overall straight on the zero line. Relatively linear because there are about as many over predicted values as under predicted values. 
+#Normality of residuals (q-q norm plot)- slight deviations from line on both tail ends of q-q norm plot suggests that residuals deviate from a normal distribution for extreme values. Most of the data falls within a normal distribution. 
+```
+
+```{r}
+#Variance inflation factor
+vif(bestmod)
+
+#Interpretation: VIF calculates the relationship between predictors and all other predictors. Generally, if VIF is greater than 5, then the model has multicollinearity. Since the VIF for WAB, EFG_O, ADJDE, and ADJOE are high, we can assume that the model has multicollinearity and that it is redundant to include some of these predictors in the model. Based on the description of the variables in Kaggle, it seems that ADJOE and ADJDE and EFJ_O and EFG_D are related and one can probably be removed from the model. 
+```
+
+```{r}
+#change best mod so that it doesn't include redundant predictors (ADJDE and EFG_O)
+bestmod2 = lm(formula = WPG ~ WAB + EFG_D + TORD + DRB + TOR + ORB + FTRD + ADJOE + FTR, data = CBB21)
+
+#Do a nested F-test and see if bestmod or bestmod2 better predicts WPG
+anova(bestmod2, bestmod)
+
+#Hypotheses:
+#H0: βi = 0; for ADJDE and EFG_O
+#HA: βi ≠ 0; for at least one of ADJDE and EFG_O 
+
+#Conclusion: Reject the null. There is statistically significant evidence (p-value < 2.2e-16) to suggest that at least one of ADJDE and EFG_O in the model is nonzero. (bestmod2 better predicts WPG)
+```
+
+```{r}
+#lets say I want to predict power ranking based off of two point shooting percentage
+plot(BARTHAG~X2P_O, data=basketball)
+mod2 = lm(BARTHAG~X2P_O, data=basketball)
+abline(mod2)
+
+#check conditions of linearity
+plot(mod2, 1:2)
+
+#Linearity (residuals vs. fitted plot)- Red line is not fitted on the zero line. Values are under predicted on both tail ends 
+#Normality of residuals (q-q norm plot)- deviations from line on both tail ends and overall curvature suggests that residuals deviate from a normal distribution. 
+```
+
+```{r}
+#transform the data
+plot(log(BARTHAG)~log(X2P_O), data=basketball)
+mod2.1 = lm(log(BARTHAG)~log(X2P_O), data=basketball)
+abline(mod2.1)
+
+#plot transformed plot
+plot(BARTHAG~X2P_O, data=basketball)
+
+B0 = summary(mod2.1)$coef[1,1]
+B1 = summary(mod2.1)$coef[1,2]
+
+curve(exp(B0)*x^B1, add=TRUE, col='red')
+
+#Check conditions of linearity
+plot(mod2.1, 1:2)
+
+#Based off of normal q-q plot, the transformation made the residuals fit a normal distribution. However, the transformed model does not seem to fit the data as well. Instead of trying transformations, I will add a second predictor to the model.
+```
+```{r}
+#make a model that predicts power ranking based off both two and three point shooting percentage
+mod23 = lm(BARTHAG~X2P_O+X3P_O, data=basketball)
+#summary(mod23)
+
+#mod23 better meets conditions on linearity than mod2 and mod2.1
+plot(mod23, 1:2)
+```
